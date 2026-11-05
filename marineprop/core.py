@@ -14,16 +14,30 @@ class OperatingPoint:
     rpm: float
     advance_speed_m_s: float
     density_kg_m3: float = 998.2
+    kinematic_viscosity_m2_s: float = 1.004e-6
 
     def __post_init__(self) -> None:
-        for field in ("diameter_m", "rpm", "advance_speed_m_s", "density_kg_m3"):
+        for field in ("diameter_m", "rpm", "advance_speed_m_s", "density_kg_m3", "kinematic_viscosity_m2_s"):
             value = getattr(self, field)
             if not isfinite(value):
                 raise ValueError(f"{field} must be finite")
-        if self.diameter_m <= 0 or self.density_kg_m3 <= 0:
+        if self.diameter_m <= 0 or self.density_kg_m3 <= 0 or self.kinematic_viscosity_m2_s <= 0:
             raise ValueError("Diameter and density must be positive.")
         if self.rpm < 0 or self.advance_speed_m_s < 0:
             raise ValueError("RPM and advance speed must be nonnegative.")
+
+    @property
+    def rotational_reynolds_number(self) -> float:
+        """Re_n = n D² / nu; not a blade-section Reynolds number."""
+        return self.revolutions_per_second * self.diameter_m**2 / self.kinematic_viscosity_m2_s
+
+    def blade_reynolds_number(self, chord_07r_m: float) -> float:
+        """Section Re at 0.7R, using geometric relative speed, no induction."""
+        if not isfinite(chord_07r_m) or chord_07r_m <= 0:
+            raise ValueError("Section chord must be finite and positive.")
+        speed = np.hypot(self.advance_speed_m_s,
+                         0.7 * pi * self.revolutions_per_second * self.diameter_m)
+        return float(speed * chord_07r_m / self.kinematic_viscosity_m2_s)
 
     @property
     def revolutions_per_second(self) -> float:
@@ -95,6 +109,10 @@ def interpolate_coefficients(
         raise ValueError("Measurement data must be finite.")
     order = np.argsort(x)
     x, kt, kq = x[order], kt[order], kq[order]
+    if x.ndim != 1 or kt.ndim != 1 or kq.ndim != 1:
+        raise ValueError("Coefficient arrays must be one-dimensional.")
+    if np.any(x < 0):
+        raise ValueError("J must be nonnegative.")
     if np.any(np.diff(x) <= 0):
         raise ValueError("Measured J values must be unique.")
     if not x[0] <= requested_j <= x[-1]:

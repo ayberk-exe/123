@@ -1,7 +1,9 @@
 """MarineProp Studio v0.1 — research prototype."""
 from __future__ import annotations
 
-import io
+from dataclasses import asdict
+from marineprop.data import measurement_table
+from marineprop.vessel import itu_green_ship_project
 
 import numpy as np
 import pandas as pd
@@ -25,10 +27,13 @@ with st.sidebar:
     rpm = st.number_input("Şaft devri (RPM)", min_value=0.0, value=3000.0, step=100.0)
     va = st.number_input("İlerleme hızı VA (m/s)", min_value=0.0, value=1.5, step=0.1)
     rho = st.number_input("Yoğunluk ρ (kg/m³)", min_value=0.1, value=998.2, step=1.0)
+    nu = st.number_input("Kinematik viskozite ν (m²/s)", min_value=1e-9, value=1.004e-6, format="%.9f")
+    scale = st.selectbox("Ölçek", ["Model ölçeği", "Tam ölçek"])
     st.caption("Motor elektrik gücü ile şaft gücü aynı değildir.")
 
-tab_point, tab_curves, tab_data = st.tabs([
-    "Çalışma noktası", "Katsayı eğrileri", "Ölçüm verisi"
+tab_dashboard, tab_point, tab_curves, tab_compare, tab_data, tab_settings = st.tabs([
+    "Dashboard", "Pervane Performans Analizi", "Open-Water Characteristics",
+    "Pervane Karşılaştırması", "Deneysel Veri Analizi", "Proje Ayarları"
 ])
 
 with tab_point:
@@ -37,7 +42,7 @@ with tab_point:
     col_a, col_b = st.columns(2)
     kt = col_a.number_input("İtme katsayısı KT", value=0.12, format="%.5f")
     kq = col_b.number_input("Tork katsayısı KQ", value=0.025, format="%.5f")
-    p = OperatingPoint(diameter, rpm, va, rho)
+    p = OperatingPoint(diameter, rpm, va, rho, nu)
     result = calculate(p, kt, kq)
     a, b, c, d = st.columns(4)
     a.metric("İtme T", f"{result.thrust_n:.3f} N")
@@ -52,7 +57,7 @@ with tab_point:
         st.warning("Bu çalışma noktasında açık su verimi tanımlı değil.")
     export = pd.DataFrame([{
         "diameter_m": diameter, "rpm": rpm, "advance_speed_m_s": va,
-        "density_kg_m3": rho, **result.__dict__,
+        "density_kg_m3": rho, "kinematic_viscosity_m2_s": nu, **result.__dict__,
     }])
     st.download_button("Çalışma noktasını CSV indir", export.to_csv(index=False).encode(),
                        file_name="marineprop_operating_point.csv", mime="text/csv")
@@ -84,6 +89,11 @@ with tab_curves:
                 (data["KQ"] > 0) & (data["KT"] >= 0),
                 data["J"] * data["KT"] / (2 * np.pi * data["KQ"]), np.nan
             )
+            data["advance_speed_m_s"] = data["J"] * p.revolutions_per_second * diameter
+            data["thrust_n"] = data["KT"] * rho * p.revolutions_per_second**2 * diameter**4
+            data["torque_nm"] = data["KQ"] * rho * p.revolutions_per_second**2 * diameter**5
+            data["shaft_power_w"] = 2 * np.pi * p.revolutions_per_second * data["torque_nm"]
+            st.caption("Boyutlu eğriler yan paneldeki sabit RPM ve çap için hesaplanır. J boyunca ilerleme hızı değişir.")
             fig = go.Figure()
             for column in ("KT", "KQ", "eta0"):
                 fig.add_trace(go.Scatter(x=data["J"], y=data[column], mode="lines+markers", name=column))
@@ -103,7 +113,7 @@ with tab_curves:
                                f"Q={current.torque_nm:.4f} N·m, P={current.shaft_power_w:.2f} W")
                 except ValueError as exc:
                     st.warning(str(exc))
-        except (ValueError, pd.errors.ParserError, UnicodeError) as exc:
+        except (ValueError, pd.errors.ParserError, UnicodeError, TypeError, OverflowError) as exc:
             st.error(f"CSV okunamadı: {exc}")
 
 with tab_data:
@@ -121,28 +131,51 @@ with tab_data:
     measured = st.file_uploader("Ölçüm CSV yükle", type="csv", key="measure")
     if measured is not None:
         try:
-            from marineprop import coefficients_from_measurement
-            df = pd.read_csv(measured)
-            required = ["rpm", "advance_speed_m_s", "thrust_n", "torque_nm"]
-            if not set(required).issubset(df.columns):
-                raise ValueError("Gerekli sütunlar: " + ", ".join(required))
-            df[required] = df[required].apply(pd.to_numeric, errors="raise")
-            if not np.isfinite(df[required].to_numpy()).all():
-                raise ValueError("Tüm veriler sonlu olmalıdır.")
-            j_values, kt_values, kq_values = [], [], []
-            for row in df.itertuples(index=False):
-                point = OperatingPoint(diameter, getattr(row, "rpm"),
-                                       getattr(row, "advance_speed_m_s"), rho)
-                kti, kqi = coefficients_from_measurement(
-                    point, getattr(row, "thrust_n"), getattr(row, "torque_nm"))
-                j_values.append(point.advance_coefficient)
-                kt_values.append(kti)
-                kq_values.append(kqi)
-            df["J"], df["KT"], df["KQ"] = j_values, kt_values, kq_values
+            df = measurement_table(pd.read_csv(measured), diameter, rho, nu)
             st.dataframe(df, use_container_width=True)
             st.download_button("Boyutsuzlaştırılmış verileri indir", df.to_csv(index=False).encode(),
                                file_name="marineprop_measured_coefficients.csv", mime="text/csv")
-        except (ValueError, pd.errors.ParserError, UnicodeError) as exc:
+        except (ValueError, pd.errors.ParserError, UnicodeError, TypeError, OverflowError) as exc:
             st.error(f"Ölçüm verisi işlenemedi: {exc}")
 
 st.caption("MarineProp Studio v0.1 — sonuçlar mühendislik doğrulaması gerektirir.")
+
+with tab_dashboard:
+    st.subheader("Mühendislik özeti")
+    a, b, c = st.columns(3)
+    a.metric("İlerleme katsayısı J", "Tanımsız" if p.advance_coefficient is None else f"{p.advance_coefficient:.4f}")
+    b.metric("Rotational Reynolds Re_n", f"{p.rotational_reynolds_number:,.0f}")
+    c.metric("Ölçek", scale)
+    st.caption("Re_n = n D²/ν. Bu değer kanat kesiti Reynolds sayısı değildir.")
+    chord = st.number_input("0.7R kesit kord uzunluğu (m)", min_value=0.000001, value=0.01, format="%.6f")
+    st.metric("Section Reynolds Re_0.7R", f"{p.blade_reynolds_number(chord):,.0f}")
+    st.caption("Re_0.7R = c √(VA² + (0.7πnD)²)/ν; indüklenmiş hızlar ihmal edilir.")
+    if scale == "Model ölçeği":
+        st.warning("Reynolds etkileri nedeniyle tam ölçek ampirik eğrileri model pervanelerde hatalı olabilir. Ölçülmüş, benzer Reynolds verisi kullanın; otomatik ölçek düzeltmesi uygulanmaz.")
+    st.info("KT/KQ girdileri gösterim amaçlıdır. Geometriye dayalı pervane tahmini yapılmaz.")
+
+with tab_compare:
+    st.subheader("İki pervane — aynı akışkan ve ilerleme hızı")
+    st.caption("Her pervane için mevcut J ve Reynolds koşuluna uygun katsayılar girin.")
+    d2 = st.number_input("Pervane B çapı (m)", min_value=0.001, value=0.08)
+    rpm2 = st.number_input("Pervane B devri (RPM)", min_value=0.0, value=2400.0)
+    kt2 = st.number_input("Pervane B KT", value=0.12)
+    kq2 = st.number_input("Pervane B KQ", value=0.025)
+    pb = OperatingPoint(d2, rpm2, va, rho, nu)
+    comparison = pd.DataFrame([
+        {"propeller": "A", **asdict(p), **asdict(result)},
+        {"propeller": "B", **asdict(pb), **asdict(calculate(pb, kt2, kq2))},
+    ])
+    st.dataframe(comparison, use_container_width=True)
+    fig_compare = go.Figure(go.Bar(x=comparison["propeller"], y=comparison["thrust_n"]))
+    fig_compare.update_layout(xaxis_title="Pervane", yaxis_title="İtme (N)")
+    st.plotly_chart(fig_compare, use_container_width=True)
+    st.download_button("Karşılaştırmayı CSV indir", comparison.to_csv(index=False).encode(), "comparison.csv", "text/csv")
+
+with tab_settings:
+    st.subheader("ITU Green Ship — çift T60 veri hazırlığı")
+    project = itu_green_ship_project()
+    st.json(asdict(project))
+    st.warning("T60 performans verisi sağlanmadı. Toplam itme, elektrik tüketimi veya gemi hızı tahmin edilmiyor.")
+    st.download_button("Proje şemasını JSON indir", __import__('json').dumps(asdict(project), indent=2), "itu_green_ship.json", "application/json")
+    st.write("Gelecek modüller: 3D geometri, STL/STEP, BEMT, kavitasyon, motor eşleştirme, OpenFOAM, optimizasyon ve raporlama. Henüz uygulanmadı.")

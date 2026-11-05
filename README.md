@@ -57,3 +57,40 @@ All inputs are SI units; CSV templates are illustrative only.
 ## Next step for Codex
 
 Run the tests and launch the Streamlit UI. Fix reported execution errors before adding features. Add a documented published propeller model only with verified scientific coefficients and references.
+
+## Development update
+
+The original application now has six Turkish/English engineering sections:
+Dashboard, performance, open-water curves, comparison, experiments, and settings.
+The coefficient CSV exports dimensional T/Q/shaft-power curves at fixed RPM and
+D, varying advance speed with J. Two propellers can be compared at the same
+advance speed; their KT/KQ inputs must correspond to their respective J and Re.
+
+Viscosity is kinematic viscosity in m²/s. `Re_n = n D² / nu` is a rotational
+reference number, not a blade Reynolds number. The optional section assessment
+uses `Re_0.7R = c_0.7R sqrt(VA² + (0.7 pi n D)²) / nu`, without induced velocity.
+Neither calculation supplies a transition criterion or empirical scale correction.
+Model-scale use displays an explicit Reynolds warning. Fluid values are user
+inputs; temperature/salinity property prediction is not implemented.
+
+`marineprop/data.py` centralizes measured CSV conversion. `marineprop/vessel.py`
+provides validated forward-operation sample and twin-thruster project contracts,
+including optional electrical power, motor efficiency, resistance and interaction
+inputs. The ITU Green Ship project contains **no T60 measurements**. These schemas
+do not predict vessel equilibrium or automatically sum unmatched operating points.
+
+Future implementations should remain separate modules consuming the SI core:
+geometry/CAD, BEMT, cavitation, motor matching, CFD adapters, optimization and
+reports. None is currently operational. Wageningen coefficients remain absent
+until published coefficients, provenance and applicability limits are verified.
+
+Verification: `python -m pytest -q` exercises arithmetic, scaling, Reynolds,
+CSV round trips, invalid measurements, project contracts, and Streamlit AppTest
+rendering/recalculation plus valid and invalid CSV paths. Uploaded-file widgets
+are substituted with in-memory CSV streams in UI tests; physical browser upload
+and download interactions have not been tested. This is numerical/software
+verification, not scientific validation against experiments or CFD.
+
+Recommended next milestone: obtain traceable T60 open-water and electrical
+measurements with uncertainty, geometry and fluid conditions; validate repeatable
+model-scale performance before motor/hull matching or empirical models.
