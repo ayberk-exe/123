@@ -2,10 +2,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import pi, isfinite
+from math import pi, isfinite, hypot
 from typing import Iterable
 
 import numpy as np
+
+
+def finite_value(value: float) -> float:
+    if not isfinite(value):
+        raise ValueError("Numerical range exceeded; check input magnitudes.")
+    return value
+
+
+def dimensional_scales(point):
+    if point.revolutions_per_second == 0:
+        return 0.0, 0.0
+    try:
+        t = point.density_kg_m3 * point.revolutions_per_second**2 * point.diameter_m**4
+        q = t * point.diameter_m
+        if t == 0 or q == 0:
+            raise ValueError("Dimensional scale underflow; check input magnitudes.")
+        return finite_value(t), finite_value(q)
+    except OverflowError as exc:
+        raise ValueError("Numerical range exceeded; check input magnitudes.") from exc
 
 
 @dataclass(frozen=True)
@@ -22,22 +41,25 @@ class OperatingPoint:
             if not isfinite(value):
                 raise ValueError(f"{field} must be finite")
         if self.diameter_m <= 0 or self.density_kg_m3 <= 0 or self.kinematic_viscosity_m2_s <= 0:
-            raise ValueError("Diameter and density must be positive.")
+            raise ValueError("Diameter, density and kinematic viscosity must be positive.")
         if self.rpm < 0 or self.advance_speed_m_s < 0:
             raise ValueError("RPM and advance speed must be nonnegative.")
 
     @property
     def rotational_reynolds_number(self) -> float:
         """Re_n = n D² / nu; not a blade-section Reynolds number."""
-        return self.revolutions_per_second * self.diameter_m**2 / self.kinematic_viscosity_m2_s
+        try:
+            return finite_value(self.revolutions_per_second * self.diameter_m**2 / self.kinematic_viscosity_m2_s)
+        except OverflowError as exc:
+            raise ValueError("Reynolds numerical range exceeded.") from exc
 
     def blade_reynolds_number(self, chord_07r_m: float) -> float:
         """Section Re at 0.7R, using geometric relative speed, no induction."""
         if not isfinite(chord_07r_m) or chord_07r_m <= 0:
             raise ValueError("Section chord must be finite and positive.")
-        speed = np.hypot(self.advance_speed_m_s,
+        speed = hypot(self.advance_speed_m_s,
                          0.7 * pi * self.revolutions_per_second * self.diameter_m)
-        return float(speed * chord_07r_m / self.kinematic_viscosity_m2_s)
+        return finite_value(speed * chord_07r_m / self.kinematic_viscosity_m2_s)
 
     @property
     def revolutions_per_second(self) -> float:
@@ -46,7 +68,12 @@ class OperatingPoint:
     @property
     def advance_coefficient(self) -> float | None:
         n = self.revolutions_per_second
-        return self.advance_speed_m_s / (n * self.diameter_m) if n > 0 else None
+        if n == 0:
+            return None
+        denominator = finite_value(n * self.diameter_m)
+        if denominator == 0:
+            raise ValueError("Advance denominator underflow.")
+        return finite_value(self.advance_speed_m_s / denominator)
 
 
 @dataclass(frozen=True)
@@ -68,14 +95,15 @@ def calculate(point: OperatingPoint, kt: float, kq: float) -> Performance:
     """
     if not all(isfinite(x) for x in (kt, kq)):
         raise ValueError("KT and KQ must be finite.")
-    n, d, rho = point.revolutions_per_second, point.diameter_m, point.density_kg_m3
+    n = point.revolutions_per_second
     j = point.advance_coefficient
-    thrust = kt * rho * n**2 * d**4
-    torque = kq * rho * n**2 * d**5
-    shaft_power = 2 * pi * n * torque
+    t_scale, q_scale = dimensional_scales(point)
+    thrust = finite_value(kt * t_scale)
+    torque = finite_value(kq * q_scale)
+    shaft_power = finite_value(2 * pi * n * torque)
     efficiency = None
     if j is not None and kq > 0 and kt >= 0:
-        efficiency = j * kt / (2 * pi * kq)
+        efficiency = finite_value(j * kt / finite_value(2 * pi * kq))
     return Performance(j, kt, kq, thrust, torque, shaft_power, efficiency)
 
 
@@ -85,11 +113,13 @@ def coefficients_from_measurement(
     """Recover KT and KQ from a measured open-water operating point."""
     if not all(isfinite(x) for x in (thrust_n, torque_nm)):
         raise ValueError("Thrust and torque must be finite.")
-    n, d, rho = point.revolutions_per_second, point.diameter_m, point.density_kg_m3
+    n = point.revolutions_per_second
     if n == 0:
         raise ValueError("Cannot recover coefficients at zero RPM.")
-    return (thrust_n / (rho * n**2 * d**4),
-            torque_nm / (rho * n**2 * d**5))
+    t_scale, q_scale = dimensional_scales(point)
+    if t_scale == 0 or q_scale == 0:
+        raise ValueError("Coefficient denominator underflow.")
+    return (finite_value(thrust_n / t_scale), finite_value(torque_nm / q_scale))
 
 
 def interpolate_coefficients(
@@ -107,10 +137,10 @@ def interpolate_coefficients(
     if not (np.isfinite(x).all() and np.isfinite(kt).all()
             and np.isfinite(kq).all() and np.isfinite(requested_j)):
         raise ValueError("Measurement data must be finite.")
-    order = np.argsort(x)
-    x, kt, kq = x[order], kt[order], kq[order]
     if x.ndim != 1 or kt.ndim != 1 or kq.ndim != 1:
         raise ValueError("Coefficient arrays must be one-dimensional.")
+    order = np.argsort(x)
+    x, kt, kq = x[order], kt[order], kq[order]
     if np.any(x < 0):
         raise ValueError("J must be nonnegative.")
     if np.any(np.diff(x) <= 0):
@@ -118,3 +148,14 @@ def interpolate_coefficients(
     if not x[0] <= requested_j <= x[-1]:
         raise ValueError("Requested J outside measured range; extrapolation disabled.")
     return float(np.interp(requested_j, x, kt)), float(np.interp(requested_j, x, kq))
+
+
+def performance_status(result: Performance) -> str:
+    """Retain signed measurements and raw eta, but flag invalid propulsion regimes."""
+    if result.advance_coefficient is None:
+        return "zero_rpm_no_prediction"
+    if result.kt < 0 or result.kq <= 0:
+        return "outside_forward_propulsion"
+    if result.efficiency is not None and result.efficiency > 1:
+        return "efficiency_above_one"
+    return "definitions_only_not_validated"

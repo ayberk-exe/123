@@ -94,3 +94,19 @@ verification, not scientific validation against experiments or CFD.
 Recommended next milestone: obtain traceable T60 open-water and electrical
 measurements with uncertainty, geometry and fluid conditions; validate repeatable
 model-scale performance before motor/hull matching or empirical models.
+
+## Engineering audit repair
+
+See [audit and limitations](docs/ENGINEERING_AUDIT.md) and the
+[native Windows migration plan](docs/DESKTOP_MIGRATION.md).
+The primary analysis now explicitly selects A (user coefficients), B (imported
+experimental curve, measured-range interpolation only), or unavailable C (series).
+B never falls back to synthetic coefficients when data are missing/out of range.
+Exports include validity status; impossible efficiencies are retained and flagged.
+Optional measured `electrical_power_w` and `motor_efficiency` CSV columns are
+preserved. Shaft/electrical ratio is distinct from motor-only efficiency.
+
+The optional actual-browser test is `python scripts/browser_smoke.py --url
+http://127.0.0.1:8502`, with Streamlit running on that port and Playwright plus an
+installed Chromium supplied separately. It is not needed to run the application.
+For Windows use the existing `.venv` as described in the migration document.
