@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "design": {
+    "diameter_m": 0.06,
+    "blade_count": 2,
+    "hub_diameter_m": 0.014,
+    "hub_length_m": 0.02,
+    "pitch_ratio": 0.6,
+    "rake_m": 0.0,
+    "skew_deg": 15.0,
+    "handedness": "left",
+    "stations": [
+      {
+        "radius_fraction": 0.21000000000000002,
+        "chord_ratio": 0.18,
+        "thickness_ratio": 0.18,
+        "pitch_factor": 1.0,
+        "profile": "naca00"
+      },
+      {
+        "radius_fraction": 0.3416666666666667,
+        "chord_ratio": 0.24,
+        "thickness_ratio": 0.16,
+        "pitch_factor": 1.0,
+        "profile": "naca00"
+      },
+      {
+        "radius_fraction": 0.4733333333333334,
+        "chord_ratio": 0.26,
+        "thickness_ratio": 0.14,
+        "pitch_factor": 1.0,
+        "profile": "naca00"
+      },
+      {
+        "radius_fraction": 0.605,
+        "chord_ratio": 0.25,
+        "thickness_ratio": 0.12,
+        "pitch_factor": 1.0,
+        "profile": "naca00"
+      },
+      {
+        "radius_fraction": 0.7366666666666668,
+        "chord_ratio": 0.21,
+        "thickness_ratio": 0.1,
+        "pitch_factor": 1.0,
+        "profile": "naca00"
+      },
+      {
+        "radius_fraction": 0.8683333333333334,
+        "chord_ratio": 0.14,
+        "thickness_ratio": 0.07,
+        "pitch_factor": 1.0,
+        "profile": "naca00"
+      },
+      {
+        "radius_fraction": 1.0,
+        "chord_ratio": 0.04,
+        "thickness_ratio": 0.04,
+        "pitch_factor": 1.0,
+        "profile": "naca00"
+      }
+    ],
+    "section_points": 32,
+    "radial_subdivisions": 3
+  }
+}

@@ -216,4 +216,4 @@ with tab_settings:
     st.json(asdict(project))
     st.warning("T60 performans verisi sağlanmadı. Toplam itme, elektrik tüketimi veya gemi hızı tahmin edilmiyor.")
     st.download_button("Proje şemasını JSON indir", json.dumps(asdict(project), indent=2), "itu_green_ship.json", "application/json", on_click="ignore")
-    st.write("Gelecek modüller: 3D geometri, STL/STEP, BEMT, kavitasyon, motor eşleştirme, OpenFOAM, optimizasyon ve raporlama. Henüz uygulanmadı.")
+    st.write("Parametrik 3D geometri ve doğrulanmış STL için ayrı masaüstü uygulaması: desktop_app.py. STEP, BEMT, kavitasyon, motor eşleştirme, OpenFOAM, optimizasyon ve raporlama henüz uygulanmadı.")

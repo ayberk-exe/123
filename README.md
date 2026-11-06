@@ -4,7 +4,7 @@
 
 > **Scientific limitation:** v0.1 does NOT infer KT or KQ from propeller geometry. You must provide open-water coefficients or measured data. The displayed default coefficients and downloadable CSV templates are synthetic, not experimentally validated. Do not use the output for safety-critical designs without independent verification.
 
-## Features in v0.1
+## Hydrodynamic application features
 
 - SI-units open-water calculations: advance coefficient J, thrust T, torque Q, shaft power and open-water efficiency
 - Interactive Streamlit interface in Turkish
@@ -80,8 +80,9 @@ inputs. The ITU Green Ship project contains **no T60 measurements**. These schem
 do not predict vessel equilibrium or automatically sum unmatched operating points.
 
 Future implementations should remain separate modules consuming the SI core:
-geometry/CAD, BEMT, cavitation, motor matching, CFD adapters, optimization and
-reports. None is currently operational. Wageningen coefficients remain absent
+BEMT, cavitation, motor matching, CFD adapters, optimization and reports.
+These solvers are not operational. Parametric geometry and validated STL are now
+available in the separate v0.2 desktop application; STEP remains unavailable. Wageningen coefficients remain absent
 until published coefficients, provenance and applicability limits are verified.
 
 Verification: `python -m pytest -q` exercises arithmetic, scaling, Reynolds,
@@ -110,3 +111,16 @@ The optional actual-browser test is `python scripts/browser_smoke.py --url
 http://127.0.0.1:8502`, with Streamlit running on that port and Playwright plus an
 installed Chromium supplied separately. It is not needed to run the application.
 For Windows use the existing `.venv` as described in the migration document.
+
+## v0.2 — Parametric native 3D designer
+
+`desktop_app.py` launches a separate **PySide6 + PyVista/VTK** application.
+Generate and inspect real radial-section propeller meshes; edit blade count,
+pitch/chord/thickness distributions, profiles, rake/skew and handedness; save
+JSON and export validated, connected STL in mm or m. STEP is not implemented.
+Geometry does not predict hydrodynamic performance.
+
+Use a separate Python 3.12 `.venv-cad` and `requirements-desktop.txt`; preserve
+the existing `.venv`. See the [desktop guide](docs/DESKTOP_V02.md) for Windows
+commands, mathematics, acceptance evidence, limitations and packaging path.
+Three parametric examples are in `examples/designs/`.

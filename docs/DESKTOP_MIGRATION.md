@@ -1,4 +1,9 @@
-# Native Windows migration plan
+# Original native Windows migration plan (historical)
+
+The separate v0.2 Qt/VTK prototype is now implemented. See
+[the current desktop guide](DESKTOP_V02.md) for supported geometry, tested
+acceptance results and Windows launch commands. The plan below records the
+earlier Streamlit repair scope; packaging and real-data validation remain future work.
 
 Proceed after measurement-based engineering validation; keep Streamlit operational
 while migrating. Do not introduce a Qt dependency into this repair.
